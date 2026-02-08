@@ -1,0 +1,139 @@
+import pygame, time, random
+
+pygame.init()
+WIDTH, HEIGHT = 900, 500
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("TWO PLAYERS • ONE WAY OUT")
+clock = pygame.time.Clock()
+FONT = pygame.font.SysFont(None, 32)
+
+# COLORS
+PINK = (255,182,193)
+BLUE = (90,160,255)
+RED = (255,90,90)
+ORANGE = (255,120,0)
+GRAY = (160,160,160)
+GREEN = (80,220,120)
+WHITE = (255,255,255)
+
+# PLAYER
+class Player:
+    def __init__(self, x, y, color, speed):
+        self.rect = pygame.Rect(x,y,30,30)
+        self.color = color
+        self.speed = speed
+        self.vel = pygame.Vector2(0,0)
+
+    def move(self):
+        self.rect.x += self.vel.x
+        self.rect.y += self.vel.y
+        self.rect.clamp_ip(screen.get_rect())
+
+    def draw(self):
+        pygame.draw.rect(screen,self.color,self.rect)
+
+# ROOM TEMPLATES
+ROOMS = [
+    [pygame.Rect(200,300,80,40)],
+    [pygame.Rect(250,200,80,40), pygame.Rect(320,300,80,40)],
+    [pygame.Rect(220,260,120,40)],
+    [pygame.Rect(260,180,80,40)]
+]
+
+MODIFIERS = [
+    ("Short Fuse", {"step":3}),
+    ("Heavy World", {"push":0.5}),
+    ("Slippery", {"slide":0.15}),
+    ("Rush", {"dash":2.0}),
+    ("Panic", {"swap":True})
+]
+
+def generate_level():
+    blocks = []
+    offset = 0
+    for _ in range(3):
+        room = random.choice(ROOMS)
+        for b in room:
+            blocks.append(pygame.Rect(b.x+offset,b.y,b.width,b.height))
+        offset += 220
+    return blocks
+
+def reset_game():
+    global runner,pusher,blocks,lava_x,last_step,modifier,start
+    runner = Player(120,380,BLUE,5)
+    pusher = Player(90,380,RED,3)
+    blocks = generate_level()
+    lava_x = -WIDTH
+    last_step = time.time()
+    modifier = random.choice(MODIFIERS)
+    start = time.time()
+
+reset_game()
+exit_rect = pygame.Rect(820,200,60,80)
+
+running=True
+while running:
+    screen.fill(PINK)
+    keys = pygame.key.get_pressed()
+    now = time.time()
+
+    for e in pygame.event.get():
+        if e.type==pygame.QUIT: running=False
+
+    if keys[pygame.K_ESCAPE]: running=False
+    if keys[pygame.K_r]: reset_game()
+
+    # INPUT
+    dash_mult = modifier[1].get("dash",1.5)
+    runner.vel.x = (keys[pygame.K_d]-keys[pygame.K_a])*runner.speed
+    runner.vel.y = (keys[pygame.K_s]-keys[pygame.K_w])*runner.speed
+    if keys[pygame.K_LSHIFT]: runner.vel *= dash_mult
+
+    pusher.vel.x = (keys[pygame.K_RIGHT]-keys[pygame.K_LEFT])*pusher.speed
+    pusher.vel.y = (keys[pygame.K_DOWN]-keys[pygame.K_UP])*pusher.speed
+
+    runner.move()
+    pusher.move()
+
+    # BLOCK PUSH
+    push_mult = modifier[1].get("push",1)
+    for b in blocks:
+        if pusher.rect.colliderect(b) and keys[pygame.K_RSHIFT]:
+            b.x += int(pusher.vel.x*push_mult)
+
+    # LAVA STEP
+    step_time = modifier[1].get("step",5)
+    if now-last_step>=step_time:
+        lava_x += 120
+        last_step = now
+
+    lava = pygame.Rect(lava_x,0,WIDTH,HEIGHT)
+    pygame.draw.rect(screen,ORANGE,lava)
+    
+    #Collsiom
+    
+    if runner.rect.colliderect(blocks) or pusher.rect.colliderect(blocks):
+        runner.rect.x = 0
+        runner.rect.y = 0
+        
+
+    if runner.rect.colliderect(lava) or pusher.rect.colliderect(lava):
+        reset_game()
+
+    pygame.draw.rect(screen,GREEN,exit_rect)
+    if runner.rect.colliderect(exit_rect) and pusher.rect.colliderect(exit_rect):
+        reset_game()
+
+    # DRAW
+    runner.draw()
+    pusher.draw()
+    for b in blocks: pygame.draw.rect(screen,GRAY,b)
+
+    screen.blit(FONT.render(f"MOD: {modifier[0]}",True,WHITE),(20,20))
+    screen.blit(FONT.render(f"TIME: {round(now-start,2)}s",True,WHITE),(20,50))
+
+    pygame.display.flip()
+    clock.tick(60)
+
+pygame.quit()
+
